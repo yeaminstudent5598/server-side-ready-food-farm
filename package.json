@@ -2,7 +2,7 @@
   "name": "server-side-ready-food-farm",
   "version": "1.0.0",
   "main": "index.js",
-   "scripts": {
+  "scripts": {
     "build": "tsc",
     "start": "TypeScript Server is rocking on",
     "dev": "nodemon src/index.ts",
@@ -13,9 +13,11 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@types/jsonwebtoken": "^9.0.10",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.17.0",
     "mongoose": "^8.17.1",
     "multer": "^2.0.2"
