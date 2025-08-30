@@ -16,14 +16,9 @@ connectDB();
 const app: Express = express();
 const port = process.env.PORT || 9000;
 
+// Middleware Setup
 app.use(cors());
 app.use(express.json());
-
-// একটি হেল্পার ফাংশন যা নাম থেকে ইউনিক স্লাগ তৈরি করে
-const generateSlug = (name: string): string => {
-  const baseSlug = name.toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
-  return `${baseSlug}-${Date.now()}`;
-};
 
 // ================== AUTHENTICATION & JWT ==================
 app.post('/jwt', (req: Request, res: Response) => {
@@ -52,7 +47,7 @@ const verifyToken = (req: Request, res: Response, next: Function) => {
 };
 
 // ================== USER API ROUTES ==================
-app.get('/api/users', async (req: Request, res: Response) => {
+app.get('/api/users', verifyToken, async (req: Request, res: Response) => {
     try {
         const users = await User.find({}).sort({ createdAt: -1 });
         res.status(200).json(users);
@@ -66,9 +61,7 @@ app.post('/api/users', async (req: Request, res: Response) => {
     try {
         const userData = req.body;
         const existingUser = await User.findOne({ email: userData.email });
-        if (existingUser) {
-            return res.status(200).json({ message: 'User already exists.' });
-        }
+        if (existingUser) return res.status(200).json({ message: 'User already exists.' });
         const newUser = new User(userData);
         await newUser.save();
         res.status(201).json(newUser);
@@ -91,7 +84,7 @@ app.get('/api/users/admin/:email', verifyToken, async (req: Request, res: Respon
     }
 });
 
-app.patch('/api/users/:id/role', async (req: Request, res: Response) => {
+app.patch('/api/users/:id/role', verifyToken, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { role } = req.body;
@@ -105,6 +98,82 @@ app.patch('/api/users/:id/role', async (req: Request, res: Response) => {
     }
 });
 
+// ================== CART & WISHLIST API ROUTES ==================
+// GET a user's cart
+app.get('/api/cart', verifyToken, async (req: Request, res: Response) => {
+    try {
+        const userEmail = (req as any).decoded.email;
+        const user = await User.findOne({ email: userEmail }).populate('cart.product');
+        if (!user) return res.status(404).json({ message: 'User not found' });
+        res.status(200).json(user.cart);
+    } catch (error) { res.status(500).json({ message: 'Error fetching cart' }); }
+});
+
+// Add/Update item quantity in cart
+app.post('/api/cart', verifyToken, async (req: Request, res: Response) => {
+    try {
+        const { productId, quantity } = req.body;
+        const userEmail = (req as any).decoded.email;
+        const user = await User.findOne({ email: userEmail });
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        const cartItemIndex = user.cart.findIndex(item => item.product.toString() === productId);
+
+        if (cartItemIndex > -1) {
+            // যদি আইটেম আগে থেকেই থাকে, তাহলে quantity আপডেট করুন
+            user.cart[cartItemIndex].quantity += quantity;
+        } else {
+            // নতুন আইটেম হলে, কার্টে যোগ করুন
+            user.cart.push({ product: productId, quantity });
+        }
+        await user.save();
+        await user.populate('cart.product');
+        res.status(200).json(user.cart);
+    } catch (error) { res.status(500).json({ message: 'Error updating cart' }); }
+});
+
+// Remove item from cart
+app.delete('/api/cart/:productId', verifyToken, async (req: Request, res: Response) => {
+    try {
+        const { productId } = req.params;
+        const userEmail = (req as any).decoded.email;
+        const user = await User.findOneAndUpdate(
+            { email: userEmail },
+            { $pull: { cart: { product: productId } } },
+            { new: true }
+        ).populate('cart.product');
+        res.status(200).json(user?.cart);
+    } catch (error) { res.status(500).json({ message: 'Error removing from cart' }); }
+});
+
+// GET a user's wishlist
+app.get('/api/wishlist', verifyToken, async (req: Request, res: Response) => {
+    try {
+        const userEmail = (req as any).decoded.email;
+        const user = await User.findOne({ email: userEmail }).populate('wishlist');
+        if (!user) return res.status(404).json({ message: 'User not found' });
+        res.status(200).json(user.wishlist);
+    } catch (error) {
+        res.status(500).json({ message: 'Error fetching wishlist' });
+    }
+});
+
+// Add item to wishlist
+app.post('/api/wishlist', verifyToken, async (req: Request, res: Response) => {
+    try {
+        const { productId } = req.body;
+        const userEmail = (req as any).decoded.email;
+        const user = await User.findOneAndUpdate(
+            { email: userEmail },
+            { $addToSet: { wishlist: productId } },
+            { new: true }
+        ).populate('wishlist');
+        res.status(200).json(user?.wishlist);
+    } catch (error) {
+        res.status(500).json({ message: 'Error adding to wishlist' });
+    }
+});
+
 // ================== CATEGORY API ROUTES ==================
 app.get('/api/categories', async (req: Request, res: Response) => {
     try {
@@ -115,11 +184,11 @@ app.get('/api/categories', async (req: Request, res: Response) => {
     }
 });
 
-app.post('/api/categories', async (req: Request, res: Response) => {
+app.post('/api/categories', verifyToken, async (req: Request, res: Response) => {
     try {
         const { name } = req.body;
         if (!name) return res.status(400).json({ message: 'Category name is required.' });
-        const slug = generateSlug(name);
+        const slug = name.toLowerCase().replace(/ & /g, '-').replace(/\s+/g, '-');
         const newCategory = new Category({ name, slug });
         await newCategory.save();
         res.status(201).json(newCategory);
@@ -128,7 +197,7 @@ app.post('/api/categories', async (req: Request, res: Response) => {
     }
 });
 
-app.delete('/api/categories/:id', async (req: Request, res: Response) => {
+app.delete('/api/categories/:id', verifyToken, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const deletedCategory = await Category.findByIdAndDelete(id);
@@ -149,11 +218,48 @@ app.get('/api/products', async (req: Request, res: Response) => {
   }
 });
 
-app.post('/api/products', async (req: Request, res: Response) => {
+app.get('/api/products/deals', async (req: Request, res: Response) => {
+  try {
+    const deals = await Product.find({
+      'pricing.discount': { $exists: true, $ne: null },
+      $expr: { $lt: [ "$pricing.discount", "$pricing.regular" ] }
+    }).populate('category', 'name').sort({ createdAt: -1 }).limit(10);
+    res.status(200).json(deals);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch deals' });
+  }
+});
+
+app.get('/api/products/:slug', async (req: Request, res: Response) => {
+  try {
+    const product = await Product.findOne({ slug: req.params.slug }).populate('category', 'name');
+    if (!product) return res.status(404).json({ message: 'Product not found' });
+    res.status(200).json(product);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch product' });
+  }
+});
+
+app.get('/api/products/category/:categoryId', async (req: Request, res: Response) => {
+  try {
+    const { categoryId } = req.params;
+    const { exclude, limit = '4' } = req.query;
+    const query: any = { category: categoryId };
+    if (exclude) {
+      query._id = { $ne: exclude };
+    }
+    const relatedProducts = await Product.find(query).limit(parseInt(limit as string));
+    res.status(200).json(relatedProducts);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch related products' });
+  }
+});
+
+app.post('/api/products', verifyToken, async (req: Request, res: Response) => {
   try {
     const productData: IProduct = req.body;
     if (!productData.name) return res.status(400).json({ message: 'Product name is required.' });
-    const slug = generateSlug(productData.name);
+    const slug = `${productData.name.toLowerCase().replace(/ & /g, '-').replace(/\s+/g, '-')}-${Date.now()}`;
     const newProduct = new Product({ ...productData, slug });
     await newProduct.save();
     res.status(201).json(newProduct);
@@ -162,7 +268,7 @@ app.post('/api/products', async (req: Request, res: Response) => {
   }
 });
 
-app.delete('/api/products/:id', async (req: Request, res: Response) => {
+app.delete('/api/products/:id', verifyToken, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const deletedProduct = await Product.findByIdAndDelete(id);
@@ -173,7 +279,7 @@ app.delete('/api/products/:id', async (req: Request, res: Response) => {
     }
 });
 
-app.patch('/api/products/status/:id', async (req: Request, res: Response) => {
+app.patch('/api/products/status/:id', verifyToken, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { status } = req.body;
@@ -186,37 +292,17 @@ app.patch('/api/products/status/:id', async (req: Request, res: Response) => {
     }
 });
 
-app.get('/api/products/deals', async (req: Request, res: Response) => {
-  try {
-    const deals = await Product.find({
-      // যেসকল প্রোডাক্টের ডিসকাউন্ট আছে এবং তা রেগুলার মূল্যের চেয়ে কম
-      'pricing.discount': { $exists: true, $ne: null },
-      $expr: { $lt: [ "$pricing.discount", "$pricing.regular" ] }
-    })
-    .populate('category', 'name')
-    .sort({ createdAt: -1 })
-    .limit(10); // সর্বোচ্চ ১০টি ডিল দেখানো হবে
-
-    res.status(200).json(deals);
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to fetch deals' });
-  }
-});
-
 // ================== ORDER API ROUTES ==================
-app.get('/api/orders', async (req: Request, res: Response) => {
+app.get('/api/orders', verifyToken, async (req: Request, res: Response) => {
   try {
-    const orders = await Order.find({})
-      .populate('user', 'name email')
-      .populate('items.product', 'name')
-      .sort({ createdAt: -1 });
+    const orders = await Order.find({}).populate('user', 'name email').populate('items.product', 'name').sort({ createdAt: -1 });
     res.status(200).json(orders);
   } catch (error) {
     res.status(500).json({ message: 'Server error fetching orders.' });
   }
 });
 
-app.patch('/api/orders/:id/status', async (req: Request, res: Response) => {
+app.patch('/api/orders/:id/status', verifyToken, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { orderStatus } = req.body;
@@ -229,7 +315,6 @@ app.patch('/api/orders/:id/status', async (req: Request, res: Response) => {
         res.status(500).json({ message: 'Server error updating order status.' });
     }
 });
-
 
 // ================== HEALTH CHECK ROUTE ==================
 app.get('/', (req: Request, res: Response) => {
