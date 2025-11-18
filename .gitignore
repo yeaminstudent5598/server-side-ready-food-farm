@@ -1,1 +1,40 @@
 .vercel
+# Dependencies
+node_modules/
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Environment variables (খুবই গুরুত্বপূর্ণ, এটা যেন গিটহাবে না যায়)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS generated files (Windows/Mac junk files)
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editor directories and files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Optional: If you have build folder (TypeScript use করলে)
+dist/
+build/
