@@ -1,9 +1,10 @@
 import mongoose, { Document, Schema, Model } from 'mongoose';
 
-// Interface for Category Document
 export interface ICategory extends Document {
   name: string;
   slug: string;
+  image?: string; // ✅ নতুন ফিল্ড: ক্যাটাগরি ইমেজ/আইকন
+  isNav: boolean;
   parentId: mongoose.Schema.Types.ObjectId | null;
 }
 
@@ -13,7 +14,7 @@ const CategorySchema: Schema<ICategory> = new Schema(
       type: String,
       required: [true, 'Category name is required'],
       trim: true,
-      unique: true, // Each category name must be unique
+      unique: true,
     },
     slug: {
       type: String,
@@ -21,9 +22,17 @@ const CategorySchema: Schema<ICategory> = new Schema(
       unique: true,
       index: true,
     },
+    image: {
+      type: String, // ইমেজের URL স্টোর হবে
+      default: null,
+    },
+    isNav: {
+      type: Boolean,
+      default: false,
+    },
     parentId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Category', // This creates a relationship to itself
+      ref: 'Category',
       default: null,
     },
   },

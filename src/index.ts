@@ -7,7 +7,7 @@ import connectDB from './config/db';
 // সকল মডেল ইম্পোর্ট করা হচ্ছে
 import Product, { IProduct } from './models/ProductModel';
 import Category from './models/CategoryModel';
-import Order from './models/OrderModel';
+import Order, { IOrder, IOrderItem } from './models/OrderModel'; // IOrder, IOrderItem ইম্পোর্ট করা হলো
 import User from './models/UserModel';
 
 dotenv.config();
@@ -17,7 +17,14 @@ const app: Express = express();
 const port = process.env.PORT || 9000;
 
 // Middleware Setup
-app.use(cors());
+app.use(cors({
+    origin: [
+        "http://localhost:5173", // লোকাল ডেভেলপমেন্টের জন্য
+        "https://amadershodai.vercel.app" // ✅ আপনার ফ্রন্টএন্ডের লাইভ লিংক (এটি দিতেই হবে)
+    ],
+    credentials: true
+}));
+
 app.use(express.json());
 
 // ================== AUTHENTICATION & JWT ==================
@@ -47,6 +54,7 @@ const verifyToken = (req: Request, res: Response, next: Function) => {
 };
 
 // ================== USER API ROUTES ==================
+// ... আপনার বিদ্যমান /api/users রুটগুলো এখানে থাকবে ...
 app.get('/api/users', verifyToken, async (req: Request, res: Response) => {
     try {
         const users = await User.find({}).sort({ createdAt: -1 });
@@ -61,12 +69,14 @@ app.post('/api/users', async (req: Request, res: Response) => {
     try {
         const userData = req.body;
         const existingUser = await User.findOne({ email: userData.email });
-        if (existingUser) return res.status(200).json({ message: 'User already exists.' });
+        if (existingUser) {
+            return res.status(200).json({ message: 'User already exists.' });
+        }
         const newUser = new User(userData);
         await newUser.save();
         res.status(201).json(newUser);
     } catch (error) {
-        console.error("Create User Error:", error);
+        console.error("❌ Create User Error:", error);
         res.status(500).json({ message: 'Failed to create user.' });
     }
 });
@@ -98,8 +108,10 @@ app.patch('/api/users/:id/role', verifyToken, async (req: Request, res: Response
     }
 });
 
+
 // ================== CART & WISHLIST API ROUTES ==================
-// GET a user's cart
+// ... আপনার বিদ্যমান /api/cart এবং /api/wishlist রুটগুলো এখানে থাকবে ...
+// ================== CART & WISHLIST API ROUTES ==================
 app.get('/api/cart', verifyToken, async (req: Request, res: Response) => {
     try {
         const userEmail = (req as any).decoded.email;
@@ -109,10 +121,10 @@ app.get('/api/cart', verifyToken, async (req: Request, res: Response) => {
     } catch (error) { res.status(500).json({ message: 'Error fetching cart' }); }
 });
 
-// Add/Update item quantity in cart
+// ✅ [FIXED LOGIC] - Add/Update item quantity in cart
 app.post('/api/cart', verifyToken, async (req: Request, res: Response) => {
     try {
-        const { productId, quantity } = req.body;
+        const { productId, quantity } = req.body; // quantity is now OPTIONAL
         const userEmail = (req as any).decoded.email;
         const user = await User.findOne({ email: userEmail });
         if (!user) return res.status(404).json({ message: 'User not found' });
@@ -120,19 +132,34 @@ app.post('/api/cart', verifyToken, async (req: Request, res: Response) => {
         const cartItemIndex = user.cart.findIndex(item => item.product.toString() === productId);
 
         if (cartItemIndex > -1) {
-            // যদি আইটেম আগে থেকেই থাকে, তাহলে quantity আপডেট করুন
-            user.cart[cartItemIndex].quantity += quantity;
+            // Item already in cart
+            if (quantity !== undefined) {
+                // If quantity is provided (e.g., 5, or 1), SET it.
+                user.cart[cartItemIndex].quantity = Number(quantity);
+            } else {
+                // If quantity NOT provided (e.g., product page "Add to Cart"), INCREMENT by 1.
+                user.cart[cartItemIndex].quantity += 1;
+            }
         } else {
-            // নতুন আইটেম হলে, কার্টে যোগ করুন
-            user.cart.push({ product: productId, quantity });
+            // New item
+            // If quantity is provided, use it. Otherwise, default to 1.
+            user.cart.push({ product: productId, quantity: Number(quantity) || 1 });
         }
+
+        // Filter out items where quantity is 0 or less
+        user.cart = user.cart.filter(item => item.quantity > 0);
+
         await user.save();
         await user.populate('cart.product');
         res.status(200).json(user.cart);
-    } catch (error) { res.status(500).json({ message: 'Error updating cart' }); }
+
+    } catch (error) { 
+        console.error("Cart Add/Update Error:", error);
+        res.status(500).json({ message: 'Error updating cart' }); 
+    }
 });
 
-// Remove item from cart
+// Remove item from cart (This is also fixed by the POST logic, but good to keep)
 app.delete('/api/cart/:productId', verifyToken, async (req: Request, res: Response) => {
     try {
         const { productId } = req.params;
@@ -146,7 +173,6 @@ app.delete('/api/cart/:productId', verifyToken, async (req: Request, res: Respon
     } catch (error) { res.status(500).json({ message: 'Error removing from cart' }); }
 });
 
-// GET a user's wishlist
 app.get('/api/wishlist', verifyToken, async (req: Request, res: Response) => {
     try {
         const userEmail = (req as any).decoded.email;
@@ -158,7 +184,6 @@ app.get('/api/wishlist', verifyToken, async (req: Request, res: Response) => {
     }
 });
 
-// Add item to wishlist
 app.post('/api/wishlist', verifyToken, async (req: Request, res: Response) => {
     try {
         const { productId } = req.body;
@@ -174,7 +199,9 @@ app.post('/api/wishlist', verifyToken, async (req: Request, res: Response) => {
     }
 });
 
+
 // ================== CATEGORY API ROUTES ==================
+// ... আপনার বিদ্যমান /api/categories রুটগুলো এখানে থাকবে ...
 app.get('/api/categories', async (req: Request, res: Response) => {
     try {
         const categories = await Category.find({}).sort({ name: 1 });
@@ -184,19 +211,75 @@ app.get('/api/categories', async (req: Request, res: Response) => {
     }
 });
 
+// ২. ✅ আপডেট: নতুন ক্যাটাগরি তৈরি (Image সহ)
 app.post('/api/categories', verifyToken, async (req: Request, res: Response) => {
     try {
-        const { name } = req.body;
+        const { name, isNav, image } = req.body; 
         if (!name) return res.status(400).json({ message: 'Category name is required.' });
+        
         const slug = name.toLowerCase().replace(/ & /g, '-').replace(/\s+/g, '-');
-        const newCategory = new Category({ name, slug });
+        
+        const newCategory = new Category({ 
+            name, 
+            slug, 
+            isNav: isNav || false,
+            image: image || null // ইমেজ সেভ করা হচ্ছে
+        });
+
         await newCategory.save();
         res.status(201).json(newCategory);
     } catch (error) {
+        console.error("Category Create Error:", error);
         res.status(500).json({ message: 'Server error creating category.' });
     }
 });
 
+// ৩. ✅ [NEW] ক্যাটাগরি এডিট করার API (Name, Image, isNav সব আপডেট হবে)
+app.patch('/api/categories/:id', verifyToken, async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { name, image, isNav } = req.body;
+
+        const updateData: any = {};
+
+        // নাম পরিবর্তন হলে স্লাগও আপডেট হবে
+        if (name) {
+            updateData.name = name;
+            updateData.slug = name.toLowerCase().replace(/ & /g, '-').replace(/\s+/g, '-');
+        }
+        
+        // ইমেজ বা isNav যদি আসে, তবে আপডেট হবে
+        if (image !== undefined) updateData.image = image;
+        if (isNav !== undefined) updateData.isNav = isNav;
+
+        const updatedCategory = await Category.findByIdAndUpdate(
+            id, 
+            updateData, 
+            { new: true } // আপডেটেড ডেটা ফেরত দেবে
+        );
+
+        if (!updatedCategory) return res.status(404).json({ message: 'Category not found.' });
+        
+        res.status(200).json(updatedCategory);
+    } catch (error) {
+        console.error("Category Edit Error:", error);
+        res.status(500).json({ message: 'Server error updating category.' });
+    }
+});
+
+// ৪. শুধুমাত্র Navbar স্ট্যাটাস কুইক টগল করার জন্য (আগেরটা রাখলাম সুবিধার জন্য)
+app.patch('/api/categories/:id/nav-status', verifyToken, async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { isNav } = req.body;
+        const updatedCategory = await Category.findByIdAndUpdate(id, { isNav }, { new: true });
+        res.status(200).json(updatedCategory);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// ৫. ক্যাটাগরি ডিলিট
 app.delete('/api/categories/:id', verifyToken, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
@@ -208,10 +291,54 @@ app.delete('/api/categories/:id', verifyToken, async (req: Request, res: Respons
     }
 });
 
+
+// ✅ [NEW API] Slug দিয়ে ক্যাটাগরি অনুযায়ী প্রোডাক্ট আনা
+app.get('/api/products/category-by-slug/:slug', async (req: Request, res: Response) => {
+    try {
+        const { slug } = req.params;
+        
+        // ১. প্রথমে স্লাগ দিয়ে ক্যাটাগরি খুঁজে বের করা
+        const category = await Category.findOne({ slug });
+        
+        if (!category) {
+            return res.status(404).json({ message: 'Category not found' });
+        }
+
+        // ২. সেই ক্যাটাগরি আইডি দিয়ে প্রোডাক্ট খুঁজে বের করা
+        const products = await Product.find({ category: category._id })
+            .populate('category', 'name slug')
+            .sort({ createdAt: -1 });
+
+        // ৩. ক্যাটাগরির নাম এবং প্রোডাক্টগুলো পাঠানো
+        res.status(200).json({
+            categoryName: category.name,
+            products: products
+        });
+
+    } catch (error) {
+        console.error("Error fetching category products:", error);
+        res.status(500).json({ message: 'Server error fetching products.' });
+    }
+});
+
+
+// ================== PRODUCT API ROUTES ==================
+// ... আপনার বিদ্যমান /api/products রুটগুলো এখানে থাকবে ...
 // ================== PRODUCT API ROUTES ==================
 app.get('/api/products', async (req: Request, res: Response) => {
   try {
-    const products = await Product.find({}).populate('category', 'name').sort({ createdAt: -1 });
+    const { search } = req.query;
+    let query: any = {};
+
+    // ✅ সার্চ লজিক: যদি search কুয়েরি থাকে, তবে নামের মধ্যে খুঁজবে (Case Insensitive)
+    if (search) {
+        query.name = { $regex: search, $options: 'i' };
+    }
+
+    const products = await Product.find(query)
+        .populate('category', 'name')
+        .sort({ createdAt: -1 });
+
     res.status(200).json(products);
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch products' });
@@ -219,53 +346,53 @@ app.get('/api/products', async (req: Request, res: Response) => {
 });
 
 app.get('/api/products/deals', async (req: Request, res: Response) => {
-  try {
-    const deals = await Product.find({
-      'pricing.discount': { $exists: true, $ne: null },
-      $expr: { $lt: [ "$pricing.discount", "$pricing.regular" ] }
-    }).populate('category', 'name').sort({ createdAt: -1 }).limit(10);
-    res.status(200).json(deals);
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to fetch deals' });
-  }
+    try {
+        const deals = await Product.find({
+            'pricing.discount': { $exists: true, $ne: null },
+            $expr: { $lt: ["$pricing.discount", "$pricing.regular"] }
+        }).populate('category', 'name').sort({ createdAt: -1 }).limit(10);
+        res.status(200).json(deals);
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to fetch deals' });
+    }
 });
 
 app.get('/api/products/:slug', async (req: Request, res: Response) => {
-  try {
-    const product = await Product.findOne({ slug: req.params.slug }).populate('category', 'name');
-    if (!product) return res.status(404).json({ message: 'Product not found' });
-    res.status(200).json(product);
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to fetch product' });
-  }
+    try {
+        const product = await Product.findOne({ slug: req.params.slug }).populate('category', 'name');
+        if (!product) return res.status(404).json({ message: 'Product not found' });
+        res.status(200).json(product);
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to fetch product' });
+    }
 });
 
 app.get('/api/products/category/:categoryId', async (req: Request, res: Response) => {
-  try {
-    const { categoryId } = req.params;
-    const { exclude, limit = '4' } = req.query;
-    const query: any = { category: categoryId };
-    if (exclude) {
-      query._id = { $ne: exclude };
+    try {
+        const { categoryId } = req.params;
+        const { exclude, limit = '4' } = req.query;
+        const query: any = { category: categoryId };
+        if (exclude) {
+            query._id = { $ne: exclude };
+        }
+        const relatedProducts = await Product.find(query).limit(parseInt(limit as string));
+        res.status(200).json(relatedProducts);
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to fetch related products' });
     }
-    const relatedProducts = await Product.find(query).limit(parseInt(limit as string));
-    res.status(200).json(relatedProducts);
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to fetch related products' });
-  }
 });
 
 app.post('/api/products', verifyToken, async (req: Request, res: Response) => {
-  try {
-    const productData: IProduct = req.body;
-    if (!productData.name) return res.status(400).json({ message: 'Product name is required.' });
-    const slug = `${productData.name.toLowerCase().replace(/ & /g, '-').replace(/\s+/g, '-')}-${Date.now()}`;
-    const newProduct = new Product({ ...productData, slug });
-    await newProduct.save();
-    res.status(201).json(newProduct);
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to create product.' });
-  }
+    try {
+        const productData: IProduct = req.body;
+        if (!productData.name) return res.status(400).json({ message: 'Product name is required.' });
+        const slug = `${productData.name.toLowerCase().replace(/ & /g, '-').replace(/\s+/g, '-')}-${Date.now()}`;
+        const newProduct = new Product({ ...productData, slug });
+        await newProduct.save();
+        res.status(201).json(newProduct);
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to create product.' });
+    }
 });
 
 app.delete('/api/products/:id', verifyToken, async (req: Request, res: Response) => {
@@ -292,15 +419,101 @@ app.patch('/api/products/status/:id', verifyToken, async (req: Request, res: Res
     }
 });
 
+// ✅ [NEW API] প্রোডাক্ট আপডেট করার রুট
+app.patch('/api/products/:id', verifyToken, async (req: Request, res: Response) => {
+    try {
+        const { id } = req.params;
+        const updates = req.body;
+
+        // যদি নাম পরিবর্তন হয়, তবে স্লাগও আপডেট হবে
+        if (updates.name) {
+            updates.slug = `${updates.name.toLowerCase().replace(/ & /g, '-').replace(/\s+/g, '-')}-${Date.now()}`;
+        }
+
+        const updatedProduct = await Product.findByIdAndUpdate(id, updates, { new: true });
+
+        if (!updatedProduct) {
+            return res.status(404).json({ message: 'Product not found' });
+        }
+
+        res.status(200).json(updatedProduct);
+    } catch (error) {
+        console.error("Update Product Error:", error);
+        res.status(500).json({ message: 'Server error updating product' });
+    }
+});
+
+
 // ================== ORDER API ROUTES ==================
 app.get('/api/orders', verifyToken, async (req: Request, res: Response) => {
-  try {
-    const orders = await Order.find({}).populate('user', 'name email').populate('items.product', 'name').sort({ createdAt: -1 });
-    res.status(200).json(orders);
-  } catch (error) {
-    res.status(500).json({ message: 'Server error fetching orders.' });
-  }
+    try {
+        const orders = await Order.find({}).populate('user', 'name email').populate('items.product', 'name').sort({ createdAt: -1 });
+        res.status(200).json(orders);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error fetching orders.' });
+    }
 });
+
+// ✅ নতুন রুট: নতুন অর্ডার তৈরি করা
+app.post('/api/orders', verifyToken, async (req: Request, res: Response) => {
+    try {
+        const userEmail = (req as any).decoded.email;
+        const shippingAddress = req.body.shippingAddress; // ফ্রন্টএন্ড থেকে শিপিং অ্যাড্রেস
+
+        // ১. ইউজার এবং তার কার্ট (প্রোডাক্ট সহ) খুঁজে বের করুন
+        const user = await User.findOne({ email: userEmail }).populate('cart.product');
+        if (!user || !user.cart || user.cart.length === 0) {
+            return res.status(400).json({ message: 'Cart is empty.' });
+        }
+
+        let totalAmount = 0;
+        const orderItems: IOrderItem[] = [];
+
+        // ২. কার্ট আইটেম থেকে অর্ডার আইটেম তৈরি করুন এবং মোট মূল্য গণনা করুন
+        for (const cartItem of user.cart) {
+            // নিশ্চিত করুন যে প্রোডাক্ট পপুলেট হয়েছে এবং এটি একটি অবজেক্ট
+            if (cartItem.product && typeof cartItem.product === 'object') {
+                const product = cartItem.product as any; // টাইপ ঠিক করার জন্য
+                
+                // মূল্য গণনা (ডিসকাউন্ট থাকলে সেটা, না থাকলে রেগুলার)
+                const price = product.pricing.discount || product.pricing.regular;
+                
+                orderItems.push({
+                    product: product._id,
+                    quantity: cartItem.quantity,
+                    price: price, // অর্ডার করার সময়কার মূল্য
+                });
+                
+                totalAmount += price * cartItem.quantity;
+            }
+        }
+
+        // ৩. নতুন অর্ডার অবজেক্ট তৈরি করুন
+        const newOrder = new Order({
+            user: user._id,
+            items: orderItems,
+            totalAmount: totalAmount,
+            shippingAddress: shippingAddress,
+            paymentStatus: 'pending', // COD-এর জন্য 'pending'
+            orderStatus: 'pending',   // নতুন অর্ডারের ডিফল্ট স্ট্যাটাস
+        });
+
+        // ৪. অর্ডার সেভ করুন
+        await newOrder.save();
+
+        // ৫. ইউজার-এর কার্ট খালি করুন
+        user.cart = [];
+        await user.save();
+
+        // ৬. সফল রেসপন্স পাঠান
+        res.status(201).json({ message: 'Order placed successfully!', order: newOrder });
+
+    } catch (error) {
+        console.error("Order Creation Error:", error);
+        res.status(500).json({ message: 'Failed to create order.' });
+    }
+});
+
 
 app.patch('/api/orders/:id/status', verifyToken, async (req: Request, res: Response) => {
     try {
@@ -316,6 +529,26 @@ app.patch('/api/orders/:id/status', verifyToken, async (req: Request, res: Respo
     }
 });
 
+// ✅ [NEW ROUTE] - Get orders for the logged-in user
+app.get('/api/orders/my-orders', verifyToken, async (req: Request, res: Response) => {
+    try {
+        const userEmail = (req as any).decoded.email;
+        const user = await User.findOne({ email: userEmail });
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        
+        const orders = await Order.find({ user: user._id })
+            .populate('items.product', 'name images pricing') // Populate product details
+            .sort({ createdAt: -1 }); // Show newest first
+            
+        res.status(200).json(orders);
+        
+    } catch (error) {
+        console.error("Fetch My Orders Error:", error);
+        res.status(500).json({ message: 'Server error fetching orders.' });
+    }
+});
 // ================== HEALTH CHECK ROUTE ==================
 app.get('/', (req: Request, res: Response) => {
     res.send('ReadyFood Farm Server is running...');
@@ -323,5 +556,5 @@ app.get('/', (req: Request, res: Response) => {
 
 // সার্ভার শুরু করা হচ্ছে
 app.listen(port, () => {
-  console.log(`🚀 TypeScript Server is rocking on http://localhost:${port}`);
+    console.log(`🚀 TypeScript Server is rocking on http://localhost:${port}`);
 });
