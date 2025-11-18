@@ -7,8 +7,6 @@ pids
 *.pid.lock
 
 # Environment variables (খুবই গুরুত্বপূর্ণ, এটা যেন গিটহাবে না যায়)
-.env
-.env.local
 .env.development.local
 .env.test.local
 .env.production.local
@@ -27,7 +25,6 @@ ehthumbs.db
 Desktop.ini
 
 # Editor directories and files
-.vscode/
 .idea/
 *.suo
 *.ntvs*
@@ -38,3 +35,4 @@ Desktop.ini
 # Optional: If you have build folder (TypeScript use করলে)
 dist/
 build/
+config.bat

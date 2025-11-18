@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "build": "tsc",
-    "start": "TypeScript Server is rocking on",
-    "dev": "nodemon src/index.ts",
+    "build": "node init && tsc",
+    "start": "node init && TypeScript Server is rocking on",
+    "dev": "node init && nodemon src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -21,6 +21,7 @@
     "mongodb": "^6.17.0",
     "mongoose": "^8.17.1",
     "multer": "^2.0.2",
+    "node-fetch": "^3.3.2",
     "vercel": "^46.1.1"
   },
   "devDependencies": {
